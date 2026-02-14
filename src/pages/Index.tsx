@@ -21,6 +21,9 @@ import TestPage from '../components/TestPage';
 import SimpleLoadManager from '../components/SimpleLoadManager';
 import SimpleProducts from '../components/SimpleProducts';
 import { supabase } from '@/integrations/supabase/client';
+import PrinterSelector from '../components/PrinterSelector';
+import { printerService } from '@/lib/printer-service';
+import { toast } from 'sonner';
 
 interface BillItem {
   no: number;
@@ -111,7 +114,7 @@ const Index = () => {
   // State management
   const [currentView, setCurrentView] = useState('billing');
   const [suppliersInput, setSuppliersInput] = useState('');
-  
+
   // Billing form state
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [selectedCustomerPhone, setSelectedCustomerPhone] = useState('');
@@ -149,12 +152,12 @@ const Index = () => {
   const [customerHistory, setCustomerHistory] = useState<Bill[]>([]);
   const [addBalanceCustomer, setAddBalanceCustomer] = useState('');
   const [addBalanceAmount, setAddBalanceAmount] = useState('');
-  
+
   // Balance tracking state
   const [previousBalance, setPreviousBalance] = useState(0);
-  
+
   // Customer suggestions state for real-time balance updates
-  const [customerSuggestionsWithBalance, setCustomerSuggestionsWithBalance] = useState<Array<{name: string, phone: string, balance: number}>>([]);
+  const [customerSuggestionsWithBalance, setCustomerSuggestionsWithBalance] = useState<Array<{ name: string, phone: string, balance: number }>>([]);
 
   // WhatsApp bill sharing function
   const sendBillToWhatsApp = (phone: string, billData: any) => {
@@ -181,9 +184,9 @@ ${shopDetails?.gstNumber ? `🧾 GST: ${shopDetails.gstNumber}` : ''}
 ⏰ Time: ${new Date().toLocaleTimeString('en-IN', { hour12: true })}
 
 🛒 ITEMS:
-${validItems.map(item => 
-  `• ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
-).join('\n')}
+${validItems.map(item =>
+      `• ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
+    ).join('\n')}
 
 🧹 Cleaning: ₹${(parseFloat(cleaningCharge) || 0).toFixed(2)}
 🚚 Delivery: ₹${(parseFloat(deliveryCharge) || 0).toFixed(2)}
@@ -215,7 +218,7 @@ Thank you for your business! 🙏
   const [isBalanceOnlyBill, setIsBalanceOnlyBill] = useState(false);
 
   // Filter customers based on input with real-time balance fetching
-  const filteredCustomers = customers.filter(customer => 
+  const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(customerInput.toLowerCase())
   );
 
@@ -224,7 +227,7 @@ Thank you for your business! 🙏
     const updateCustomerSuggestions = async () => {
       if (customerInput && filteredCustomers.length > 0) {
         console.log(`[CUSTOMER SUGGESTIONS] Updating balances for ${filteredCustomers.length} customers`);
-        
+
         const suggestionsWithBalance = await Promise.all(
           filteredCustomers.map(async (customer) => {
             try {
@@ -244,9 +247,9 @@ Thank you for your business! 🙏
             }
           })
         );
-        
+
         setCustomerSuggestionsWithBalance(suggestionsWithBalance);
-        console.log(`[CUSTOMER SUGGESTIONS] Updated balances:`, 
+        console.log(`[CUSTOMER SUGGESTIONS] Updated balances:`,
           suggestionsWithBalance.map(c => `${c.name}: ₹${c.balance}`));
       } else {
         setCustomerSuggestionsWithBalance([]);
@@ -326,24 +329,24 @@ Thank you for your business! 🙏
   const handleCustomerSelect = async (customerName: string) => {
     try {
       console.log(`[BILLING PAGE] Customer selected: ${customerName}`);
-      
+
       const customer = customers.find(c => c.name === customerName);
       const customerPhone = customer?.phone || '';
-      
+
       setSelectedCustomer(customerName);
       setSelectedCustomerPhone(customerPhone);
       setCustomerInput(customerName);
       setShowCustomerSuggestions(false);
-      
+
       // CRITICAL: Always fetch the latest balance from database, NEVER use cached data
       if (customer) {
         console.log(`[BILLING PAGE] Fetching real-time balance for: ${customerName}`);
-        
+
         const realTimeBalance = await getRealTimeBalance(customerName);
         setPreviousBalance(realTimeBalance);
-        
+
         console.log(`[BILLING PAGE] Balance set for billing page: ₹${realTimeBalance}`);
-        
+
         // Verify consistency with customer list
         const customerInList = customers.find(c => c.name === customerName);
         if (customerInList && Math.abs(customerInList.balance - realTimeBalance) > 0.01) {
@@ -366,25 +369,25 @@ Thank you for your business! 🙏
   const handlePhoneChange = async (phone: string) => {
     try {
       setSelectedCustomerPhone(phone);
-      
+
       console.log(`[BILLING PAGE] Phone entered: ${phone}`);
-      
+
       // Auto-fill previous balance when phone is entered - FETCH REAL-TIME FROM DATABASE
       if (phone.length >= 10) { // Valid phone number length
         console.log(`[BILLING PAGE] Fetching balance for phone: ${phone}`);
-        
+
         const result = await getRealTimeBalanceByPhone(phone);
         setPreviousBalance(result.balance);
-        
+
         console.log(`[BILLING PAGE] Balance retrieved for phone ${phone}: ₹${result.balance}`);
-        
+
         // Auto-fill customer name if found
         if (result.name && !selectedCustomer) {
           setSelectedCustomer(result.name);
           setCustomerInput(result.name);
           console.log(`[BILLING PAGE] Auto-filled customer name: ${result.name}`);
         }
-        
+
         // Verify consistency
         if (result.name) {
           const customerInList = customers.find(c => c.name === result.name);
@@ -474,7 +477,7 @@ Thank you for your business! 🙏
           console.log(`[WALK-IN] Customer created/found with ID: ${customerId}`);
           // Refresh customers data to get the new customer
           await refreshCustomersData();
-          
+
           // Find the customer in the refreshed list
           const newCustomer = customers.find(c => c.phone === cleanPhone);
           if (newCustomer) {
@@ -491,11 +494,11 @@ Thank you for your business! 🙏
         }
       } catch (rpcError) {
         console.warn(`[WALK-IN] Database function failed, trying direct insertion:`, rpcError);
-        
+
         // Fallback: Direct customer creation
         const walkInName = `Walk-in Customer (${cleanPhone})`;
         console.log(`[WALK-IN] Creating customer directly: ${walkInName}`);
-        
+
         try {
           // Try the enhanced safe creation first
           const customerData = await safeCreateCustomer(walkInName, cleanPhone, 0);
@@ -513,7 +516,7 @@ Thank you for your business! 🙏
             return true;
           } catch (directError) {
             console.error(`[WALK-IN] Direct creation also failed:`, directError);
-            
+
             // Last resort: Check if customer exists in database but not in local state
             try {
               const { data: existingData, error: checkError } = await supabase
@@ -533,14 +536,14 @@ Thank you for your business! 🙏
             } catch (checkError) {
               console.error(`[WALK-IN] Database check failed:`, checkError);
             }
-            
+
             throw new Error(`All customer creation methods failed. Last error: ${directError}`);
           }
         }
       }
     } catch (e) {
       console.error('[WALK-IN] Critical error in walk-in customer creation:', e);
-      
+
       // Provide specific error messages based on error type
       let errorMessage = 'Failed to create walk-in customer. Please try again.';
       if (e instanceof Error) {
@@ -552,7 +555,7 @@ Thank you for your business! 🙏
           errorMessage = 'Network error. Please check your connection and try again.';
         }
       }
-      
+
       alert(errorMessage);
       return false;
     }
@@ -565,17 +568,17 @@ Thank you for your business! 🙏
         console.log('[BILLING PAGE] No customer selected for balance refresh');
         return;
       }
-      
+
       console.log(`[BILLING PAGE] Manual balance refresh requested for: ${selectedCustomer}`);
-      
+
       const realTimeBalance = await getRealTimeBalance(selectedCustomer);
       setPreviousBalance(realTimeBalance);
-      
+
       console.log(`[BILLING PAGE] Manual refresh complete: ₹${realTimeBalance}`);
-      
+
       // Also refresh the customers list to sync with CustomerManager
       await refreshCustomersData();
-      
+
       // Show success feedback
       alert(`Balance refreshed: ₹${realTimeBalance.toFixed(2)}`);
     } catch (error) {
@@ -588,26 +591,26 @@ Thank you for your business! 🙏
   const handleItemChange = (index: number, field: keyof BillItem, value: string) => {
     const newItems = [...billItems];
     (newItems[index] as any)[field] = value;
-    
+
     if (field === 'weight' || field === 'rate') {
       newItems[index].amount = calculateAmount(newItems[index].weight, newItems[index].rate);
     }
-    
+
     setBillItems(newItems);
-    
+
     // Add new row if this is the last row and has content
-    if (index === billItems.length - 1 && billItems.length < 10 && 
-        (newItems[index].item || newItems[index].weight || newItems[index].rate)) {
+    if (index === billItems.length - 1 && billItems.length < 10 &&
+      (newItems[index].item || newItems[index].weight || newItems[index].rate)) {
       // Default to "Chicken Live" for new rows
-      const chickenLiveProduct = products.find(p => p.name.toLowerCase().includes('chicken live')) || 
-                                products.find(p => p.name.toLowerCase().includes('live')) ||
-                                products[0]; // fallback to first product
-      setBillItems([...newItems, { 
-        no: newItems.length + 1, 
-        item: chickenLiveProduct ? chickenLiveProduct.name : 'Chicken Live', 
-        weight: '', 
-        rate: '', 
-        amount: 0 
+      const chickenLiveProduct = products.find(p => p.name.toLowerCase().includes('chicken live')) ||
+        products.find(p => p.name.toLowerCase().includes('live')) ||
+        products[0]; // fallback to first product
+      setBillItems([...newItems, {
+        no: newItems.length + 1,
+        item: chickenLiveProduct ? chickenLiveProduct.name : 'Chicken Live',
+        weight: '',
+        rate: '',
+        amount: 0
       }]);
     }
   };
@@ -616,7 +619,7 @@ Thank you for your business! 🙏
   const validatePaymentAmount = (paidAmount: number, requiredAmount: number): { isValid: boolean; message: string } => {
     const tolerance = 0.01; // Allow 1 cent tolerance for rounding
     const difference = Math.abs(paidAmount - requiredAmount);
-    
+
     if (difference > tolerance) {
       if (paidAmount > requiredAmount) {
         return {
@@ -630,7 +633,7 @@ Thank you for your business! 🙏
         };
       }
     }
-    
+
     return { isValid: true, message: '' };
   };
 
@@ -651,12 +654,12 @@ Thank you for your business! 🙏
       setShopDetails(details);
       setShopDetailsLoaded(true);
       setShowShopRegistration(false);
-      
+
       // For Vasan user, mark registration as completed in localStorage
       if (businessId === 'vasan') {
         localStorage.setItem(`shop_registration_completed_${businessId}`, 'true');
       }
-      
+
       alert('Shop details saved successfully!');
     } catch (error) {
       console.error('Error saving shop details:', error);
@@ -748,7 +751,7 @@ Thank you for your business! 🙏
     const validItems = billItems.filter(item => item.item && item.weight && item.rate);
     const existingBalance = customers.find(c => c.name === selectedCustomer)?.balance || 0;
     const hasPaymentAmount = paymentAmount && parseFloat(paymentAmount) > 0;
-    
+
     // Allow balance-only payment if customer has existing balance and payment amount is entered
     if (validItems.length === 0 && existingBalance <= 0 && !hasPaymentAmount) {
       alert('Please add at least one item or enter payment amount for balance payment');
@@ -781,7 +784,7 @@ Thank you for your business! 🙏
       const paidAmount = parseFloat(paymentAmount);
       const itemsTotal = validItems.reduce((sum, item) => sum + item.amount, 0);
       const extraCharges = (parseFloat(cleaningCharge) || 0) + (parseFloat(deliveryCharge) || 0);
-      
+
       if (validItems.length === 0 && existingBalance > 0) {
         // Balance-only payment: Allow overpayment for advance credit
         const potentialNewBalance = existingBalance - paidAmount;
@@ -800,7 +803,7 @@ Thank you for your business! 🙏
           console.log(`Advance payment: ₹${advanceAmount.toFixed(2)} will be credited to customer`);
         }
       }
-      
+
       setShowConfirmDialog(true);
     } else {
       // No payment amount - direct bill creation for balance
@@ -817,7 +820,7 @@ Thank you for your business! 🙏
       const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
       const extraCharges = (parseFloat(cleaningCharge) || 0) + (parseFloat(deliveryCharge) || 0);
       const validItems = billItems.filter(item => item.item && item.weight && item.rate);
-      
+
       // Running balance calculation: Total = Previous Balance + Current Items + Charges
       const totalBillAmount = previousBalance + itemsTotal + extraCharges;
       const newBalance = totalBillAmount - 0; // No payment, so new balance = total bill amount
@@ -841,24 +844,24 @@ Thank you for your business! 🙏
 
       // Add to billing history with error handling
       const savedBill = await addBill(billRecord);
-      
+
       if (!savedBill) {
         throw new Error('Failed to save bill to database');
       }
-      
+
       // Set confirmed bill and show actions
       setConfirmedBill(savedBill);
       setIsBalanceOnlyBill(true);
       setShowBillActions(true);
-      
+
       // Critical: Refresh customers data to sync balance across all views
       await refreshCustomersData();
-      
+
       console.log('Bill confirmation without payment completed successfully');
-      
+
     } catch (error) {
       console.error('Error during bill confirmation without payment:', error);
-      
+
       // Provide user-friendly error feedback
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
       alert(`Failed to confirm bill: ${errorMessage}\n\nPlease try again or contact support if the problem persists.`);
@@ -872,33 +875,33 @@ Thank you for your business! 🙏
       if (!ok) return;
       let paidAmount = 0;
       setCalcError(null);
-      
+
       // Calculate paid amount based on payment method with validation
       if (paymentMethod === 'cash_gpay') {
         const cash = parseFloat(cashAmount) || 0;
         const gpay = parseFloat(gpayAmount) || 0;
-        
+
         // Validate individual amounts
         if (cash < 0 || gpay < 0) {
           alert('Cash and GPay amounts cannot be negative. Please enter valid amounts.');
           return;
         }
-        
+
         if (cash === 0 && gpay === 0) {
           alert('Please enter at least one payment amount (Cash or GPay).');
           return;
         }
-        
+
         paidAmount = cash + gpay;
       } else {
         paidAmount = parseFloat(paymentAmount) || 0;
-        
+
         if (paidAmount <= 0) {
           alert('Payment amount must be greater than zero.');
           return;
         }
       }
-      
+
       // Calculate using cents to avoid precision
       const { toCents, computeTotals } = await import('../lib/utils');
       const itemsTotalC = toCents(
@@ -911,10 +914,10 @@ Thank you for your business! 🙏
       const previousBalanceC = toCents(previousBalance);
       const paidC = toCents(paidAmount);
       const validItems = billItems.filter(item => item.item && item.weight && item.rate);
-      
+
       // Running balance calculation with defensive checks
       let totalBillAmount = 0, newBalance = 0, requiredAmount = 0, transactionAmount = 0, advanceAmount = 0;
-      
+
       if (validItems.length === 0 && previousBalance > 0) {
         // This is a balance-only payment (no new items, just paying existing balance)
         totalBillAmount = previousBalance; // Total is just the previous balance
@@ -922,7 +925,7 @@ Thank you for your business! 🙏
         newBalance = Math.max(previousBalance - paidAmount, 0); // Clamp to zero
         requiredAmount = previousBalance; // For validation, but partial payments are allowed
         advanceAmount = Math.max(paidAmount - previousBalance, 0);
-        
+
         // Allow overpayment for advance credit on balance-only payments
         if (paidAmount > previousBalance) {
           const advanceAmount = paidAmount - previousBalance;
@@ -942,7 +945,7 @@ Thank you for your business! 🙏
         newBalance = result.newBalance / 100;
         requiredAmount = result.totalAmount / 100;
         advanceAmount = result.advanceAmount / 100;
-        
+
         // Allow overpayment for advance credit on regular bills
         if (paidAmount > totalBillAmount) {
           const advanceAmount = paidAmount - totalBillAmount;
@@ -974,24 +977,24 @@ Thank you for your business! 🙏
 
       // Add to billing history with error handling
       const savedBill = await addBill(billRecord);
-      
+
       if (!savedBill) {
         throw new Error('Failed to save bill to database');
       }
-      
+
       // Set confirmed bill and show actions
       setConfirmedBill(savedBill);
       setIsBalanceOnlyBill(validItems.length === 0);
       setShowBillActions(true);
-      
+
       // Critical: Refresh customers data to sync balance across all views
       await refreshCustomersData();
-      
+
       console.log('Bill confirmation completed successfully');
-      
+
     } catch (error) {
       console.error('Error during bill confirmation:', error);
-      
+
       // Provide user-friendly error feedback
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
       alert(`Failed to confirm bill: ${errorMessage}\n\nPlease try again or contact support if the problem persists.`);
@@ -1030,16 +1033,16 @@ Thank you for your business! 🙏
   // Generate bill content using running balance system - ENHANCED for Vasan business
   const generateBillContent = async (bill: Bill, uiPreviousBalance: number) => {
     const time = new Date(bill.timestamp).toLocaleTimeString();
-    
+
     // CRITICAL FIX: Use the previous balance from UI state (before the bill was created)
     // This ensures printed bills match exactly what was displayed in the UI
     const billPreviousBalance = uiPreviousBalance;
-    
+
     const itemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
     const cleaning = (bill as any).cleaningCharge != null ? (bill as any).cleaningCharge : ((bill as any).cleaning_charge != null ? (bill as any).cleaning_charge : 0);
     const delivery = (bill as any).deliveryCharge != null ? (bill as any).deliveryCharge : ((bill as any).delivery_charge != null ? (bill as any).delivery_charge : 0);
     const extraCharges = (parseFloat(cleaning) || 0) + (parseFloat(delivery) || 0);
-    
+
     // CRITICAL FIX: Handle payment-only transactions correctly
     let totalBillAmount, newBalance, transactionAmount;
     if (bill.items.length === 0 && bill.paidAmount > 0) {
@@ -1053,7 +1056,7 @@ Thank you for your business! 🙏
       totalBillAmount = billPreviousBalance + itemsTotal + extraCharges;
       newBalance = Math.max(totalBillAmount - bill.paidAmount, 0);
     }
-    
+
     // Add logging to verify calculations match UI
     console.log(`[BILL GENERATION] Calculation breakdown:
       Previous Balance: ₹${billPreviousBalance}
@@ -1061,7 +1064,7 @@ Thank you for your business! 🙏
       Total Bill Amount: ₹${totalBillAmount}
       Paid Amount: ₹${bill.paidAmount}
       New Balance: ₹${newBalance}`);
-    
+
     let paymentMethodText = '';
     if (bill.paidAmount > 0) {
       if (bill.paymentMethod === 'cash') {
@@ -1120,10 +1123,10 @@ Phone: ${bill.customerPhone}
 
 ITEMS:
 ------
-${bill.items.length === 0 ? 'No items - Payment Only Transaction' : 
-  bill.items.map((item, index) => 
-    `${index + 1}. ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
-  ).join('\n')}
+${bill.items.length === 0 ? 'No items - Payment Only Transaction' :
+        bill.items.map((item, index) =>
+          `${index + 1}. ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
+        ).join('\n')}
 
 --------------------------------
 Previous Balance: ₹${billPreviousBalance.toFixed(2)}
@@ -1160,14 +1163,14 @@ Thank you for your business!`.trim();
       : (parseFloat(paymentAmount) || 0);
     const newBalance = Math.max(totalBillAmount - paidAmount, 0);
     const advanceAmount = Math.max(paidAmount - totalBillAmount, 0);
-    
+
     const time = new Date().toLocaleTimeString();
-    
+
     // Get dynamic business info for print
     let printBusinessName = shopDetails?.shopName || 'BILLING SYSTEM';
     let printAddress = shopDetails?.address || 'Address not set';
     let printContactInfo = '';
-    
+
     if (businessId === 'vasan_chicken_perambur' || businessId === 'vasan') {
       printContactInfo = `Phone: +91 9876543210
 WhatsApp: +91 9876543210
@@ -1195,9 +1198,9 @@ Phone: ${selectedCustomerPhone}
 
 ITEMS:
 ------
-${validItems.map((item, index) => 
-  `${index + 1}. ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
-).join('\n')}
+${validItems.map((item, index) =>
+      `${index + 1}. ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
+    ).join('\n')}
 
 --------------------------------
 Previous Balance: ₹${previousBalance.toFixed(2)}
@@ -1252,76 +1255,29 @@ Use "Confirm Bill" to save this bill.
   };
 
   // Enhanced Print function with error handling and user feedback
+  // Enhanced Print bill function with mobile rendering support and Bluetooth integration
   const printBill = async (bill: Bill) => {
     try {
       const printContent = await generateBillContent(bill, previousBalance);
-      const printWindow = window.open('', '_blank');
-      
-      if (printWindow) {
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>Bill - ${bill.customer}</title>
-              <style>
-                @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
-                body { 
-                  font-family: 'Roboto', sans-serif; 
-                  font-weight: 700;
-                  padding: 20px; 
-                  line-height: 1.4;
-                  background: white;
-                  color: black;
-                }
-                pre { 
-                  white-space: pre-wrap; 
-                  font-size: 16px;
-                  margin: 0;
-                  font-family: 'Roboto', sans-serif;
-                  font-weight: 700;
-                }
-                @media print {
-                  body { 
-                    margin: 0; 
-                    padding: 10px; 
-                    font-weight: 700;
-                  }
-                  pre { 
-                    font-size: 14px; 
-                    line-height: 1.2;
-                    font-weight: 700;
-                  }
-                }
-                @page {
-                  margin: 0.5in;
-                }
-              </style>
-            </head>
-            <body>
-              <pre>${printContent}</pre>
-              <script>
-                window.onload = function() {
-                  setTimeout(function() {
-                    window.print();
-                  }, 500);
-                }
-              </script>
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        
-        // Show success message
-        setTimeout(() => {
-          alert('Print dialog opened successfully!');
-        }, 1000);
-        
+
+      // Check if we have a connected Bluetooth printer
+      const isBluetoothConnected = printerService.isConnected();
+
+      if (isBluetoothConnected) {
+        toast.info("Printing to Bluetooth printer...");
+        await printerService.printRaw(printContent);
       } else {
-        alert('Unable to open print dialog. Please check your popup blocker settings.');
+        // Fallback to robust system printing with mobile delays
+        await printerService.printViaSystem(printContent, `Bill - ${bill.customer}`);
       }
-      
+
+      setTimeout(() => {
+        toast.success('Print command sent!');
+      }, 1000);
+
     } catch (error) {
       console.error('Error printing bill:', error);
-      alert('Error preparing bill for printing. Please try again.');
+      toast.error('Error preparing bill for printing.');
     }
   };
 
@@ -1330,44 +1286,44 @@ Use "Confirm Bill" to save this bill.
     try {
       // Dynamic import for jsPDF to avoid build issues
       const { jsPDF } = await import('jspdf');
-      
+
       const billContent = await generateBillContent(bill, previousBalance);
-      
+
       // Create new PDF document
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4'
       });
-      
+
       // Set font and size for better readability
       pdf.setFont('courier', 'normal');
       pdf.setFontSize(10);
-      
+
       // Split content into lines and add to PDF
       const lines = billContent.split('\n');
       let yPosition = 20;
       const lineHeight = 4;
       const pageHeight = pdf.internal.pageSize.height;
-      
+
       lines.forEach((line, index) => {
         // Check if we need a new page
         if (yPosition > pageHeight - 20) {
           pdf.addPage();
           yPosition = 20;
         }
-        
+
         pdf.text(line, 10, yPosition);
         yPosition += lineHeight;
       });
-      
+
       // Save the PDF
       const fileName = `Bill_${bill.customer.replace(/\s+/g, '_')}_${bill.date}_${bill.id}.pdf`;
       pdf.save(fileName);
-      
+
       // Show success message
       alert('Bill PDF downloaded successfully!');
-      
+
     } catch (error) {
       console.error('Error generating PDF:', error);
       // Fallback to text file if PDF generation fails
@@ -1381,7 +1337,7 @@ Use "Confirm Bill" to save this bill.
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
+
       alert('PDF generation failed. Downloaded as text file instead.');
     }
   };
@@ -1392,19 +1348,19 @@ Use "Confirm Bill" to save this bill.
       const billContent = await generateBillContent(bill, previousBalance);
       const encodedMessage = encodeURIComponent(billContent);
       const phoneNumber = bill.customerPhone.replace(/\D/g, '');
-      
+
       // Validate phone number
       if (!phoneNumber || phoneNumber.length < 10) {
         alert('Invalid phone number. Please check the customer phone number.');
         return;
       }
-      
+
       // Create WhatsApp URL with proper formatting
       const whatsappUrl = `https://wa.me/91${phoneNumber}?text=${encodedMessage}`;
-      
+
       // Open WhatsApp in new window
       window.open(whatsappUrl, '_blank');
-      
+
     } catch (error) {
       console.error('Error sending to WhatsApp:', error);
       alert('Error preparing WhatsApp message. Please try again.');
@@ -1416,21 +1372,21 @@ Use "Confirm Bill" to save this bill.
     try {
       const billContent = await generateBillContent(bill, previousBalance);
       const phoneNumber = bill.customerPhone.replace(/\D/g, '');
-      
+
       // Validate phone number
       if (!phoneNumber || phoneNumber.length < 10) {
         alert('Invalid phone number. Please check the customer phone number.');
         return;
       }
-      
+
       // Create SMS URL
       const smsUrl = `sms:${phoneNumber}?body=${encodeURIComponent(billContent)}`;
-      
+
       // Try to open SMS app
       const link = document.createElement('a');
       link.href = smsUrl;
       link.click();
-      
+
     } catch (error) {
       console.error('Error sending to SMS:', error);
       alert('Error preparing SMS message. Please try again.');
@@ -1465,15 +1421,15 @@ Use "Confirm Bill" to save this bill.
     setCustomerInput('');
     setPreviousBalance(0); // Reset previous balance
     // Default to "Chicken Live" instead of empty
-    const chickenLiveProduct = products.find(p => p.name.toLowerCase().includes('chicken live')) || 
-                              products.find(p => p.name.toLowerCase().includes('live')) ||
-                              products[0]; // fallback to first product
-    setBillItems([{ 
-      no: 1, 
-      item: chickenLiveProduct ? chickenLiveProduct.name : 'Chicken Live', 
-      weight: '', 
-      rate: '', 
-      amount: 0 
+    const chickenLiveProduct = products.find(p => p.name.toLowerCase().includes('chicken live')) ||
+      products.find(p => p.name.toLowerCase().includes('live')) ||
+      products[0]; // fallback to first product
+    setBillItems([{
+      no: 1,
+      item: chickenLiveProduct ? chickenLiveProduct.name : 'Chicken Live',
+      weight: '',
+      rate: '',
+      amount: 0
     }]);
     setPaymentAmount('');
     setPaymentMethod('cash');
@@ -1494,24 +1450,24 @@ Use "Confirm Bill" to save this bill.
       alert('Please select a customer first');
       return;
     }
-    
+
     let filteredHistory = bills.filter(bill => bill.customer === balanceCustomer);
-    
+
     if (startDate && endDate) {
       const start = new Date(startDate);
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999); // Include the entire end date
-      
+
       filteredHistory = filteredHistory.filter(bill => {
         const billDate = new Date(bill.date);
         return billDate >= start && billDate <= end;
       });
     }
-    
+
     // Sort bills in ascending order (oldest first)
     filteredHistory.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     setCustomerHistory(filteredHistory);
-    
+
     if (filteredHistory.length === 0) {
       alert('No bills found for the selected customer and date range.');
     }
@@ -1530,7 +1486,7 @@ Use "Confirm Bill" to save this bill.
       const newBalance = customer.balance + amount;
       await updateCustomerBalance(addBalanceCustomer, newBalance);
     }
-    
+
     setAddBalanceCustomer('');
     setAddBalanceAmount('');
     alert(`Balance added successfully!`);
@@ -1582,7 +1538,7 @@ Use "Confirm Bill" to save this bill.
     } else {
       businessName = shopDetails?.shopName || 'Business';
     }
-    
+
     return `
 ${businessName.toUpperCase()} - CUSTOMER HISTORY
 ==================================
@@ -1591,23 +1547,23 @@ Customer: ${customerName}
 PURCHASE HISTORY:
 ================
 ${bills.map((bill, index) => {
-  const currentItemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
-  
-  return `
+      const currentItemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
+
+      return `
 Bill No: ${bill.billNumber || 'N/A'} - Date: ${formatDate(bill.date)}
-${bill.items.map(item => 
-  `• ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
-).join('\n')}
+${bill.items.map(item =>
+        `• ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
+      ).join('\n')}
 Total: ₹${currentItemsTotal.toFixed(2)}
 Paid: ₹${bill.paidAmount.toFixed(2)}
 Balance: ₹${bill.balanceAmount.toFixed(2)}
-Payment: ${bill.paymentMethod === 'cash' ? 'Cash' : 
+Payment: ${bill.paymentMethod === 'cash' ? 'Cash' :
           bill.paymentMethod === 'upi' ? `UPI - ${bill.upiType}` :
-          bill.paymentMethod === 'cash_gpay' ? `Cash + GPay` :
-          `Check/DD - ${bill.bankName} - ${bill.checkNumber}`}
+            bill.paymentMethod === 'cash_gpay' ? `Cash + GPay` :
+              `Check/DD - ${bill.bankName} - ${bill.checkNumber}`}
 -----------------------------------
 `;
-}).join('')}
+    }).join('')}
 
 ==================================
 Thank you for your business!
@@ -1617,7 +1573,7 @@ Thank you for your business!
   // Print history
   const printHistory = () => {
     if (customerHistory.length === 0) return;
-    
+
     const content = generateHistoryContent(customerHistory, balanceCustomer);
     const printWindow = window.open('', '_blank');
     if (printWindow) {
@@ -1643,7 +1599,7 @@ Thank you for your business!
   // Download history as high-quality PDF
   const downloadHistory = () => {
     if (customerHistory.length === 0) return;
-    
+
     // Get correct business name based on businessId
     let businessName = '';
     if (businessId === 'vasan_chicken_perambur' || businessId === 'vasan') {
@@ -1674,25 +1630,25 @@ Thank you for your business!
     // Helper function to add header to each page
     const addHeader = (pageNum: number) => {
       doc.setPage(pageNum);
-      
+
       // Business header
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(18);
       doc.setTextColor(25, 25, 25);
       doc.text(businessName.toUpperCase(), margin, 15);
-      
+
       // Subtitle
       doc.setFontSize(12);
       doc.setTextColor(100, 100, 100);
       doc.text('Customer Purchase History', margin, 25);
-      
+
       // Date and time
       const currentDate = new Date().toLocaleDateString('en-IN');
       const currentTime = new Date().toLocaleTimeString('en-IN');
       doc.setFontSize(9);
       doc.setTextColor(150, 150, 150);
       doc.text(`Generated: ${currentDate} at ${currentTime}`, margin, 32);
-      
+
       // Line separator
       doc.setDrawColor(200, 200, 200);
       doc.line(margin, 35, pageWidth - margin, 35);
@@ -1717,42 +1673,42 @@ Thank you for your business!
     doc.setFont('helvetica', 'bold');
     doc.text('CUSTOMER INFORMATION', margin, yPosition);
     yPosition += 12;
-    
+
     // Customer details box
     doc.setFillColor(248, 250, 252);
     doc.rect(margin, yPosition - 5, contentWidth, 25, 'F');
     doc.setDrawColor(200, 200, 200);
     doc.rect(margin, yPosition - 5, contentWidth, 25, 'S');
-    
+
     const customer = customers.find(c => c.name === balanceCustomer);
     if (customer) {
       doc.setFontSize(11);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(50, 50, 50);
-      
+
       doc.text(`Name: ${customer.name}`, margin + 5, yPosition + 3);
       doc.text(`Phone: ${customer.phone}`, margin + 5, yPosition + 10);
       doc.text(`Current Balance: ${formatMoney(customer.balance)}`, margin + 5, yPosition + 17);
     }
-    
+
     yPosition += 35;
-    
+
     // Purchase history section
     doc.setFontSize(14);
     doc.setTextColor(25, 25, 25);
     doc.setFont('helvetica', 'bold');
     doc.text('PURCHASE HISTORY', margin, yPosition);
     yPosition += 15;
-    
+
     // Table headers with proper alignment
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    
+
     // Header background
     doc.setFillColor(168, 85, 247); // Purple background
     doc.rect(margin, yPosition - 5, contentWidth, 10, 'F');
-    
+
     // Header text with proper column positions
     const colDate = margin + 5;
     const colBill = margin + 40;
@@ -1767,18 +1723,18 @@ Thank you for your business!
     doc.text('Paid', colPaid - doc.getTextWidth('Paid'), yPosition);
     doc.text('Balance', colBal - doc.getTextWidth('Balance'), yPosition);
     yPosition += 15;
-    
+
     // Table rows with proper alignment
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(50, 50, 50);
-    
+
     customerHistory.forEach((bill, index) => {
       // Check if we need a new page
       if (yPosition > pageHeight - 40) {
         doc.addPage();
         addHeader(doc.internal.getNumberOfPages());
         yPosition = 45;
-        
+
         // Re-add table headers
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
@@ -1795,33 +1751,33 @@ Thank you for your business!
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(50, 50, 50);
       }
-      
+
       // Alternate row colors
       if (index % 2 === 0) {
         doc.setFillColor(248, 250, 252);
         doc.rect(margin, yPosition - 3, contentWidth, 8, 'F');
       }
-      
+
       const currentItemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
       const billDate = formatDate(bill.date);
       const itemsSummary = bill.items.map(item => `${item.item} (${item.weight}kg)`).join(', ');
       const truncatedItems = itemsSummary.length > 25 ? itemsSummary.substring(0, 25) + '...' : itemsSummary;
-      
+
       doc.setFontSize(9);
       doc.text(billDate, colDate, yPosition);
       doc.text(bill.billNumber || 'N/A', colBill, yPosition);
       doc.text(truncatedItems, colItems, yPosition);
-      
+
       // Numbers in monospaced font and right aligned
       doc.setFont('courier', 'normal');
       drawRight(formatMoney(currentItemsTotal), colTotal, yPosition);
       drawRight(formatMoney(bill.paidAmount), colPaid, yPosition);
       drawRight(formatMoney(bill.balanceAmount), colBal, yPosition);
       doc.setFont('helvetica', 'normal');
-      
+
       yPosition += 10;
     });
-    
+
     // Summary section
     yPosition += 10;
     doc.setFontSize(14);
@@ -1829,39 +1785,39 @@ Thank you for your business!
     doc.setFont('helvetica', 'bold');
     doc.text('SUMMARY', margin, yPosition);
     yPosition += 12;
-    
+
     // Calculate totals
     const totalBilled = customerHistory.reduce((sum, bill) => sum + bill.items.reduce((itemSum, item) => itemSum + item.amount, 0), 0);
     const totalPaid = customerHistory.reduce((sum, bill) => sum + bill.paidAmount, 0);
     const totalBalance = customerHistory.reduce((sum, bill) => sum + bill.balanceAmount, 0);
-    
+
     // Summary box
     doc.setFillColor(248, 250, 252);
     doc.rect(margin, yPosition - 5, contentWidth, 30, 'F');
     doc.setDrawColor(200, 200, 200);
     doc.rect(margin, yPosition - 5, contentWidth, 30, 'S');
-    
+
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(50, 50, 50);
-    
+
     const summaryInfo = [
       `Total Bills: ${customerHistory.length}`,
       `Total Billed: ${formatMoney(totalBilled)}`,
       `Total Paid: ${formatMoney(totalPaid)}`,
       `Outstanding Balance: ${formatMoney(totalBalance)}`
     ];
-    
+
     summaryInfo.forEach((info, index) => {
       doc.text(info, margin + 5, yPosition + 3 + (index * 6));
     });
-    
+
     // Add footers to all pages
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       addFooter(i, totalPages);
     }
-    
+
     // Save the PDF
     doc.save(`History_${balanceCustomer}_${new Date().toISOString().split('T')[0]}.pdf`);
   };
@@ -1869,7 +1825,7 @@ Thank you for your business!
   // Streamlined Send history to WhatsApp
   const sendHistoryToWhatsApp = () => {
     if (customerHistory.length === 0) return;
-    
+
     const content = generateHistoryContent(customerHistory, balanceCustomer);
     const encodedMessage = encodeURIComponent(content);
     const phoneNumber = customerHistory[0]?.customerPhone?.replace(/\D/g, '') || '';
@@ -1880,16 +1836,16 @@ Thank you for your business!
   // Initialize form with default item on component mount
   useEffect(() => {
     if (products.length > 0 && billItems.length === 1 && !billItems[0].item) {
-      const chickenLiveProduct = products.find(p => p.name.toLowerCase().includes('chicken live')) || 
-                                products.find(p => p.name.toLowerCase().includes('live')) ||
-                                products[0];
+      const chickenLiveProduct = products.find(p => p.name.toLowerCase().includes('chicken live')) ||
+        products.find(p => p.name.toLowerCase().includes('live')) ||
+        products[0];
       if (chickenLiveProduct) {
-        setBillItems([{ 
-          no: 1, 
-          item: chickenLiveProduct.name, 
-          weight: '', 
-          rate: '', 
-          amount: 0 
+        setBillItems([{
+          no: 1,
+          item: chickenLiveProduct.name,
+          weight: '',
+          rate: '',
+          amount: 0
         }]);
       }
     }
@@ -1898,18 +1854,18 @@ Thank you for your business!
   // Manual balance update function
   const updateCustomerBalanceManually = async () => {
     if (!selectedCustomer) return;
-    
+
     const customer = customers.find(c => c.name === selectedCustomer);
     const existingBalance = customer ? customer.balance : 0;
     const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
     const paidAmount = parseFloat(paymentAmount) || 0;
-    
+
     // Calculate new balance: Previous balance + Current purchase - Payment
     const newBalance = existingBalance + itemsTotal - paidAmount;
-    
+
     // Update customer balance
     await updateCustomerBalance(selectedCustomer, newBalance);
-    
+
     alert(`Customer balance updated successfully!\nPrevious Balance: ₹${existingBalance.toFixed(2)}\nNew Items: ₹${itemsTotal.toFixed(2)}\nPayment: ₹${paidAmount.toFixed(2)}\nNew Balance: ₹${newBalance.toFixed(2)}`);
   };
 
@@ -1917,7 +1873,7 @@ Thank you for your business!
   const generateCustomerData = (customerName: string) => {
     const customer = customers.find(c => c.name === customerName);
     const customerBills = bills.filter(bill => bill.customer === customerName);
-    
+
     if (!customer) {
       alert('Customer not found');
       return;
@@ -1925,7 +1881,7 @@ Thank you for your business!
 
     const currentDate = new Date().toLocaleDateString('en-IN');
     const currentTime = new Date().toLocaleTimeString('en-IN');
-    
+
     // Get correct business name based on businessId
     let businessName = '';
     if (businessId === 'vasan_chicken_perambur' || businessId === 'vasan') {
@@ -1937,7 +1893,7 @@ Thank you for your business!
     } else {
       businessName = shopDetails?.shopName || 'Business';
     }
-    
+
     let content = `${businessName.toUpperCase()} - CUSTOMER DATA REPORT
 ================================================
 Generated on: ${currentDate} at ${currentTime}
@@ -1969,18 +1925,18 @@ DETAILED BILLS:
         const previousBalance = previousBills.reduce((sum, b) => sum + b.balanceAmount, 0);
         const currentItemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
         const totalBillAmount = previousBalance + currentItemsTotal;
-        
+
         content += `\nBill #${index + 1} - ${bill.billNumber || 'N/A'}
 Date: ${formatDate(bill.date)}
 Time: ${bill.timestamp.toLocaleTimeString('en-IN')}
 ----------------------------------------
 Items:
 `;
-        
+
         bill.items.forEach((item, itemIndex) => {
           content += `${itemIndex + 1}. ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}\n`;
         });
-        
+
         content += `----------------------------------------
 Previous Balance: ₹${previousBalance.toFixed(2)}
 Current Items: ₹${currentItemsTotal.toFixed(2)}
@@ -1988,7 +1944,7 @@ Total Amount: ₹${totalBillAmount.toFixed(2)}
 Paid Amount: ₹${bill.paidAmount.toFixed(2)}
 Balance Amount: ₹${bill.balanceAmount.toFixed(2)}
 Payment Method: ${bill.paymentMethod.toUpperCase()}`;
-        
+
         if (bill.paymentMethod === 'upi' && bill.upiType) {
           content += ` (${bill.upiType})`;
         } else if (bill.paymentMethod === 'check' && bill.bankName) {
@@ -1996,7 +1952,7 @@ Payment Method: ${bill.paymentMethod.toUpperCase()}`;
         } else if (bill.paymentMethod === 'cash_gpay') {
           content += ` (Cash: ₹${bill.cashAmount?.toFixed(2) || '0.00'} + GPay: ₹${bill.gpayAmount?.toFixed(2) || '0.00'})`;
         }
-        
+
         content += '\n';
       });
     }
@@ -2012,7 +1968,7 @@ Generated by Billing System`;
   const downloadCustomerData = (customerName: string) => {
     const customer = customers.find(c => c.name === customerName);
     const customerBills = bills.filter(bill => bill.customer === customerName);
-    
+
     if (!customer) {
       alert('Customer not found');
       return;
@@ -2049,25 +2005,25 @@ Generated by Billing System`;
     // Helper function to add header to each page
     const addHeader = (pageNum: number) => {
       doc.setPage(pageNum);
-      
+
       // Business header
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(18);
       doc.setTextColor(25, 25, 25);
       doc.text(businessName.toUpperCase(), margin, 15);
-      
+
       // Subtitle
       doc.setFontSize(12);
       doc.setTextColor(100, 100, 100);
       doc.text('Customer Data Report', margin, 25);
-      
+
       // Date and time
       const currentDate = new Date().toLocaleDateString('en-IN');
       const currentTime = new Date().toLocaleTimeString('en-IN');
       doc.setFontSize(9);
       doc.setTextColor(150, 150, 150);
       doc.text(`Generated: ${currentDate} at ${currentTime}`, margin, 32);
-      
+
       // Line separator
       doc.setDrawColor(200, 200, 200);
       doc.line(margin, 35, pageWidth - margin, 35);
@@ -2092,23 +2048,23 @@ Generated by Billing System`;
     doc.setFont('helvetica', 'bold');
     doc.text('CUSTOMER INFORMATION', margin, yPosition);
     yPosition += 12;
-    
+
     // Customer details box
     doc.setFillColor(248, 250, 252);
     doc.rect(margin, yPosition - 5, contentWidth, 25, 'F');
     doc.setDrawColor(200, 200, 200);
     doc.rect(margin, yPosition - 5, contentWidth, 25, 'S');
-    
+
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(50, 50, 50);
-    
+
     doc.text(`Name: ${customer.name}`, margin + 5, yPosition + 3);
     doc.text(`Phone: ${customer.phone}`, margin + 5, yPosition + 10);
     doc.text(`Current Balance: ${formatMoney(customer.balance)}`, margin + 5, yPosition + 17);
-    
+
     yPosition += 35;
-    
+
     // Purchase history section
     if (customerBills.length > 0) {
       doc.setFontSize(14);
@@ -2116,23 +2072,23 @@ Generated by Billing System`;
       doc.setFont('helvetica', 'bold');
       doc.text('PURCHASE HISTORY', margin, yPosition);
       yPosition += 15;
-      
+
       // Table headers with proper alignment
       doc.setFontSize(10);
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(255, 255, 255);
-      
+
       // Header background
       doc.setFillColor(59, 130, 246);
       doc.rect(margin, yPosition - 5, contentWidth, 10, 'F');
-      
+
       // Header text with proper column positions
       const colDate = margin + 5;
       const colBill = margin + 40;
       const colItems = margin + 80;
       const colTotal = margin + 155; // right edge
       const colPaid = margin + 185;  // right edge
-      const colBal  = margin + 215;  // right edge
+      const colBal = margin + 215;  // right edge
       doc.text('Date', colDate, yPosition);
       doc.text('Bill No', colBill, yPosition);
       doc.text('Items', colItems, yPosition);
@@ -2140,11 +2096,11 @@ Generated by Billing System`;
       doc.text('Paid', colPaid - doc.getTextWidth('Paid'), yPosition);
       doc.text('Balance', colBal - doc.getTextWidth('Balance'), yPosition);
       yPosition += 15;
-      
+
       // Table rows with proper alignment
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(50, 50, 50);
-      
+
       customerBills.forEach((bill, index) => {
         // Check for new page
         if (yPosition > pageHeight - 40) {
@@ -2167,30 +2123,30 @@ Generated by Billing System`;
           doc.setFont('helvetica', 'normal');
           doc.setTextColor(50, 50, 50);
         }
-        
+
         // Alternate row colors
         if (index % 2 === 0) {
           doc.setFillColor(248, 250, 252);
           doc.rect(margin, yPosition - 3, contentWidth, 8, 'F');
         }
-        
+
         const currentItemsTotal = bill.items.reduce((sum, item) => sum + item.amount, 0);
         const billDate = formatDate(bill.date);
         const itemsSummary = bill.items.map(item => `${item.item} (${item.weight}kg)`).join(', ');
         const truncatedItems = itemsSummary.length > 25 ? itemsSummary.substring(0, 25) + '...' : itemsSummary;
-        
+
         doc.setFontSize(9);
         doc.text(billDate, colDate, yPosition);
         doc.text(bill.billNumber || 'N/A', colBill, yPosition);
         doc.text(truncatedItems, colItems, yPosition);
-        
+
         // Numbers in monospaced font and right aligned
         doc.setFont('courier', 'normal');
         drawRight(formatMoney(currentItemsTotal), colTotal, yPosition);
         drawRight(formatMoney(bill.paidAmount), colPaid, yPosition);
         drawRight(formatMoney(bill.balanceAmount), colBal, yPosition);
         doc.setFont('helvetica', 'normal');
-        
+
         yPosition += 10;
       });
     } else {
@@ -2198,13 +2154,13 @@ Generated by Billing System`;
       doc.setTextColor(150, 150, 150);
       doc.text('No purchase history found for this customer.', margin, yPosition);
     }
-    
+
     // Add footers to all pages
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       addFooter(i, totalPages);
     }
-    
+
     // Save the PDF
     doc.save(`Customer_${customerName}_${new Date().toISOString().split('T')[0]}.pdf`);
   };
@@ -2213,7 +2169,7 @@ Generated by Billing System`;
   const downloadAllCustomersData = () => {
     const currentDate = new Date().toLocaleDateString('en-IN');
     const currentTime = new Date().toLocaleTimeString('en-IN');
-    
+
     // Get correct business name based on businessId
     let businessName = '';
     if (businessId === 'vasan_chicken_perambur' || businessId === 'vasan') {
@@ -2244,23 +2200,23 @@ Generated by Billing System`;
     // Helper function to add header to each page
     const addHeader = (pageNum: number) => {
       doc.setPage(pageNum);
-      
+
       // Business header
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(18);
       doc.setTextColor(25, 25, 25);
       doc.text(businessName.toUpperCase(), margin, 15);
-      
+
       // Subtitle
       doc.setFontSize(12);
       doc.setTextColor(100, 100, 100);
       doc.text('Complete Customer Data Report', margin, 25);
-      
+
       // Date and time
       doc.setFontSize(9);
       doc.setTextColor(150, 150, 150);
       doc.text(`Generated: ${currentDate} at ${currentTime}`, margin, 32);
-      
+
       // Line separator
       doc.setDrawColor(200, 200, 200);
       doc.line(margin, 35, pageWidth - margin, 35);
@@ -2285,24 +2241,24 @@ Generated by Billing System`;
     doc.setFont('helvetica', 'bold');
     doc.text('BUSINESS SUMMARY', margin, yPosition);
     yPosition += 15;
-    
+
     // Calculate totals
     const totalRevenue = bills.reduce((sum, bill) => sum + bill.totalAmount, 0);
     const totalCollected = bills.reduce((sum, bill) => sum + bill.paidAmount, 0);
     const totalOutstanding = bills.reduce((sum, bill) => sum + bill.balanceAmount, 0);
     const totalCustomers = customers.length;
     const totalBills = bills.length;
-    
+
     // Summary box
     doc.setFillColor(248, 250, 252);
     doc.rect(margin, yPosition - 5, contentWidth, 40, 'F');
     doc.setDrawColor(200, 200, 200);
     doc.rect(margin, yPosition - 5, contentWidth, 40, 'S');
-    
+
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(50, 50, 50);
-    
+
     const summaryInfo = [
       `Total Customers: ${totalCustomers}`,
       `Total Bills: ${totalBills}`,
@@ -2310,29 +2266,29 @@ Generated by Billing System`;
       `Total Collected: ${formatMoney(totalCollected)}`,
       `Total Outstanding: ${formatMoney(totalOutstanding)}`
     ];
-    
+
     summaryInfo.forEach((info, index) => {
       doc.text(info, margin + 5, yPosition + 3 + (index * 7));
     });
-    
+
     yPosition += 50;
-    
+
     // Customer list section
     doc.setFontSize(14);
     doc.setTextColor(25, 25, 25);
     doc.setFont('helvetica', 'bold');
     doc.text('CUSTOMER LIST', margin, yPosition);
     yPosition += 15;
-    
+
     // Table headers with proper alignment
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(255, 255, 255);
-    
+
     // Header background
     doc.setFillColor(34, 197, 94);
     doc.rect(margin, yPosition - 5, contentWidth, 10, 'F');
-    
+
     // Header text with proper column positions
     const colName = margin + 5;
     const colPhone = margin + 70;
@@ -2345,11 +2301,11 @@ Generated by Billing System`;
     doc.text('Total Billed', colBilled - doc.getTextWidth('Total Billed'), yPosition);
     doc.text('Bills', colBills - doc.getTextWidth('Bills'), yPosition);
     yPosition += 15;
-    
+
     // Customer rows with proper alignment
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(50, 50, 50);
-    
+
     customers.forEach((customer, index) => {
       // Check if we need a new page
       if (yPosition > pageHeight - 40) {
@@ -2371,16 +2327,16 @@ Generated by Billing System`;
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(50, 50, 50);
       }
-      
+
       // Alternate row colors
       if (index % 2 === 0) {
         doc.setFillColor(248, 250, 252);
         doc.rect(margin, yPosition - 3, contentWidth, 8, 'F');
       }
-      
+
       const customerBills = bills.filter(bill => bill.customer === customer.name);
       const totalBilled = customerBills.reduce((sum, bill) => sum + bill.totalAmount, 0);
-      
+
       doc.setFontSize(9);
       doc.text(customer.name, colName, yPosition);
       doc.text(customer.phone, colPhone, yPosition);
@@ -2389,16 +2345,16 @@ Generated by Billing System`;
       drawRight(formatMoney(totalBilled), colBilled, yPosition);
       drawRight(String(customerBills.length), colBills, yPosition);
       doc.setFont('helvetica', 'normal');
-      
+
       yPosition += 10;
     });
-    
+
     // Add footers to all pages
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       addFooter(i, totalPages);
     }
-    
+
     // Save the PDF
     doc.save(`All_Customers_${new Date().toISOString().split('T')[0]}.pdf`);
   };
@@ -2466,49 +2422,45 @@ Generated by Billing System`;
               </button>
             </div>
           </div>
-          
+
           {/* Navigation - UPDATED to include Load page */}
           <div className="flex flex-wrap justify-center gap-2">
             <button
               onClick={() => setCurrentView('billing')}
-              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                currentView === 'billing' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${currentView === 'billing'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
             >
               <Calculator className="inline mr-1 h-4 w-4" />
               Billing
             </button>
             <button
               onClick={() => setCurrentView('editBill')}
-              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                currentView === 'editBill' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${currentView === 'editBill'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
             >
               <FileText className="inline mr-1 h-4 w-4" />
               Edit Bill
             </button>
             <button
               onClick={() => setCurrentView('load')}
-              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                currentView === 'load' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${currentView === 'load'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
             >
               <Truck className="inline mr-1 h-4 w-4" />
               Load
             </button>
             <button
               onClick={() => setCurrentView('products')}
-              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                currentView === 'products' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+              className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${currentView === 'products'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
             >
               <Package className="inline mr-1 h-4 w-4" />
               Products
@@ -2517,66 +2469,60 @@ Generated by Billing System`;
               <>
                 <button
                   onClick={() => setCurrentView('customers')}
-                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                    currentView === 'customers' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${currentView === 'customers'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
                 >
                   <Users className="inline mr-1 h-4 w-4" />
                   Manage Customers
                 </button>
                 <button
                   onClick={() => setCurrentView('balance')}
-                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                    currentView === 'balance' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${currentView === 'balance'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
                 >
                   <History className="inline mr-1 h-4 w-4" />
                   Balance & History
                 </button>
                 <button
                   onClick={() => setCurrentView('dashboard')}
-                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                    currentView === 'dashboard' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${currentView === 'dashboard'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
                 >
                   <BarChart3 className="inline mr-1 h-4 w-4" />
                   Sales Dashboard
                 </button>
                 <button
                   onClick={() => setCurrentView('purchase')}
-                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                    currentView === 'purchase' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${currentView === 'purchase'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
                 >
                   <Package className="inline mr-1 h-4 w-4" />
                   Purchase
                 </button>
                 <button
                   onClick={() => setCurrentView('salary')}
-                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                    currentView === 'salary' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${currentView === 'salary'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
                 >
                   <CreditCard className="inline mr-1 h-4 w-4" />
                   Salary
                 </button>
                 <button
                   onClick={() => setCurrentView('business-info')}
-                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${
-                    currentView === 'business-info' 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                  className={`px-3 sm:px-4 py-1.5 rounded-lg font-medium text-sm ${currentView === 'business-info'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
                 >
                   <Building2 className="inline mr-1 h-4 w-4" />
                   Business Info
@@ -2590,7 +2536,7 @@ Generated by Billing System`;
         {currentView === 'billing' && (
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4">
             <h2 className="text-lg sm:text-xl font-bold mb-3">Create Bill</h2>
-            
+
             {/* Compact form layout for desktop */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
               {/* Date Selection */}
@@ -2643,7 +2589,12 @@ Generated by Billing System`;
                     onSendWhatsApp={sendBillToWhatsApp}
                     onWalkInCustomerCreation={handleWalkInCustomerCreation}
                     shopDetails={shopDetails || undefined}
+                    onPrint={printBill}
+                    businessId={businessId}
                   />
+                  <div className="mt-4">
+                    <PrinterSelector />
+                  </div>
                 </div>
               )}
 
@@ -2664,85 +2615,85 @@ Generated by Billing System`;
                           setShowCustomerSuggestions(true);
                         }}
                         onFocus={() => setShowCustomerSuggestions(true)}
-                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Type customer name"
-                  />
-                  <Search className="absolute right-2 top-2 h-5 w-5 text-gray-400" />
-                </div>
-                {showAddCustomerPhonePrompt && (
-                  <div className="mt-2 p-2 border border-yellow-300 bg-yellow-50 rounded">
-                    <div className="text-sm text-yellow-800 mb-1">New customer. Enter mobile number to add:</div>
-                    <input
-                      type="tel"
-                      value={newCustomerPhone}
-                      onChange={(e) => setNewCustomerPhone(e.target.value.replace(/[^0-9]/g, '').slice(0,10))}
-                      placeholder="10-digit mobile"
-                      className="w-full p-2 border border-gray-300 rounded"
-                      maxLength={10}
-                    />
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleQuickAddCustomerAndConfirm}
-                        className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
-                      >
-                        Add Customer & Complete Bill
-                      </button>
+                        className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Type customer name"
+                      />
+                      <Search className="absolute right-2 top-2 h-5 w-5 text-gray-400" />
                     </div>
-                  </div>
-                )}
-                
-                {/* Customer Suggestions with Real-Time Balances */}
-                {showCustomerSuggestions && customerInput && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-                    {customerSuggestionsWithBalance.length > 0 ? (
-                      customerSuggestionsWithBalance.map((customer, index) => (
-                        <div
-                          key={index}
-                          onClick={() => handleCustomerSelect(customer.name)}
-                          className="p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <div className="font-medium text-sm">{customer.name}</div>
-                              <div className="text-xs text-gray-500">{customer.phone}</div>
-                            </div>
-                            {customer.balance > 0 && (
-                              <span className="text-red-600 text-xs font-medium">
-                                Balance: ₹{customer.balance.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
+                    {showAddCustomerPhonePrompt && (
+                      <div className="mt-2 p-2 border border-yellow-300 bg-yellow-50 rounded">
+                        <div className="text-sm text-yellow-800 mb-1">New customer. Enter mobile number to add:</div>
+                        <input
+                          type="tel"
+                          value={newCustomerPhone}
+                          onChange={(e) => setNewCustomerPhone(e.target.value.replace(/[^0-9]/g, '').slice(0, 10))}
+                          placeholder="10-digit mobile"
+                          className="w-full p-2 border border-gray-300 rounded"
+                          maxLength={10}
+                        />
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={handleQuickAddCustomerAndConfirm}
+                            className="px-3 py-1.5 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                          >
+                            Add Customer & Complete Bill
+                          </button>
                         </div>
-                      ))
-                    ) : (
-                      // Fallback to filtered customers if real-time data isn't ready
-                      filteredCustomers.map((customer, index) => (
-                        <div
-                          key={index}
-                          onClick={() => handleCustomerSelect(customer.name)}
-                          className="p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                        >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <div className="font-medium text-sm">{customer.name}</div>
-                              <div className="text-xs text-gray-500">{customer.phone}</div>
+                      </div>
+                    )}
+
+                    {/* Customer Suggestions with Real-Time Balances */}
+                    {showCustomerSuggestions && customerInput && (
+                      <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
+                        {customerSuggestionsWithBalance.length > 0 ? (
+                          customerSuggestionsWithBalance.map((customer, index) => (
+                            <div
+                              key={index}
+                              onClick={() => handleCustomerSelect(customer.name)}
+                              className="p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <div className="font-medium text-sm">{customer.name}</div>
+                                  <div className="text-xs text-gray-500">{customer.phone}</div>
+                                </div>
+                                {customer.balance > 0 && (
+                                  <span className="text-red-600 text-xs font-medium">
+                                    Balance: ₹{customer.balance.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            {customer.balance > 0 && (
-                              <span className="text-red-600 text-xs font-medium">
-                                Balance: ₹{customer.balance.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))
+                          ))
+                        ) : (
+                          // Fallback to filtered customers if real-time data isn't ready
+                          filteredCustomers.map((customer, index) => (
+                            <div
+                              key={index}
+                              onClick={() => handleCustomerSelect(customer.name)}
+                              className="p-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                            >
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <div className="font-medium text-sm">{customer.name}</div>
+                                  <div className="text-xs text-gray-500">{customer.phone}</div>
+                                </div>
+                                {customer.balance > 0 && (
+                                  <span className="text-red-600 text-xs font-medium">
+                                    Balance: ₹{customer.balance.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+                </>
+              )}
+            </div>
 
             {/* Selected Customer Display with Balance and History - UPDATED with running balance system */}
             {selectedCustomer && (
@@ -2750,7 +2701,7 @@ Generated by Billing System`;
                 <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1">
                     <div>
-                      <strong className="text-blue-800 text-sm">Selected Customer:</strong> 
+                      <strong className="text-blue-800 text-sm">Selected Customer:</strong>
                       <span className="ml-2 text-blue-900 font-medium text-sm">{selectedCustomer}</span>
                       <div className="text-xs text-gray-600">Phone: {selectedCustomerPhone}</div>
                     </div>
@@ -2780,8 +2731,8 @@ Generated by Billing System`;
                     <div className="max-h-20 overflow-y-auto">
                       {getCustomerTransactionHistory(selectedCustomer).slice(-3).map((bill, index) => (
                         <div key={index} className="text-xs text-yellow-700 border-b border-yellow-200 pb-1 mb-1 last:border-b-0">
-                          <strong>{bill.date}:</strong> Total: ₹{bill.totalAmount.toFixed(2)}, 
-                          Paid: ₹{bill.paidAmount.toFixed(2)}, 
+                          <strong>{bill.date}:</strong> Total: ₹{bill.totalAmount.toFixed(2)},
+                          Paid: ₹{bill.paidAmount.toFixed(2)},
                           Balance: ₹{bill.balanceAmount.toFixed(2)}
                         </div>
                       ))}
@@ -2923,7 +2874,7 @@ Generated by Billing System`;
                   return null;
                 })()}
               </div>
-              
+
               <div className="flex flex-col gap-2">
                 <div className="text-lg font-bold">New Balance: ₹{computedSummary.newBalance.toFixed(2)}</div>
                 {/* Advance intentionally removed per latest requirement */}
@@ -2963,7 +2914,7 @@ Generated by Billing System`;
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-lg p-6 max-w-md w-full">
                   <h3 className="text-lg font-semibold mb-4">Payment Method</h3>
-                  
+
                   {/* Payment Method Selection */}
                   <div className="space-y-4 mb-6">
                     <div className="flex items-center space-x-2">
@@ -2978,7 +2929,7 @@ Generated by Billing System`;
                       />
                       <label htmlFor="cash" className="text-sm font-medium">Cash</label>
                     </div>
-                    
+
                     <div className="flex items-center space-x-2">
                       <input
                         type="radio"
@@ -2991,7 +2942,7 @@ Generated by Billing System`;
                       />
                       <label htmlFor="upi" className="text-sm font-medium">UPI</label>
                     </div>
-                    
+
                     {paymentMethod === 'upi' && (
                       <div className="ml-6">
                         <select
@@ -3010,7 +2961,7 @@ Generated by Billing System`;
                         </select>
                       </div>
                     )}
-                    
+
                     <div className="flex items-center space-x-2">
                       <input
                         type="radio"
@@ -3023,7 +2974,7 @@ Generated by Billing System`;
                       />
                       <label htmlFor="check" className="text-sm font-medium">Check/DD</label>
                     </div>
-                    
+
                     {paymentMethod === 'check' && (
                       <div className="ml-6 space-y-2">
                         <input
@@ -3042,7 +2993,7 @@ Generated by Billing System`;
                         />
                       </div>
                     )}
-                    
+
                     <div className="flex items-center space-x-2">
                       <input
                         type="radio"
@@ -3055,7 +3006,7 @@ Generated by Billing System`;
                       />
                       <label htmlFor="cash_gpay" className="text-sm font-medium">Cash + GPay</label>
                     </div>
-                    
+
                     {paymentMethod === 'cash_gpay' && (
                       <div className="ml-6 space-y-2">
                         <input
@@ -3085,14 +3036,14 @@ Generated by Billing System`;
                             const totalPaid = cash + gpay;
                             const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
                             const validItems = billItems.filter(item => item.item && item.weight && item.rate);
-                            
+
                             let requiredAmount;
                             if (validItems.length === 0 && previousBalance > 0) {
                               requiredAmount = previousBalance;
                             } else {
                               requiredAmount = previousBalance + itemsTotal;
                             }
-                            
+
                             if (totalPaid > requiredAmount) {
                               return (
                                 <div className="text-red-600 text-xs mt-1">
@@ -3118,7 +3069,7 @@ Generated by Billing System`;
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Payment Validation Summary */}
                   {(() => {
                     let paidAmount = 0;
@@ -3127,10 +3078,10 @@ Generated by Billing System`;
                     } else {
                       paidAmount = parseFloat(paymentAmount) || 0;
                     }
-                    
+
                     const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
                     const validItems = billItems.filter(item => item.item && item.weight && item.rate);
-                    
+
                     let requiredAmount;
                     if (validItems.length === 0 && previousBalance > 0) {
                       requiredAmount = previousBalance;
@@ -3138,10 +3089,10 @@ Generated by Billing System`;
                       const extraCharges = (parseFloat(cleaningCharge) || 0) + (parseFloat(deliveryCharge) || 0);
                       requiredAmount = previousBalance + itemsTotal + extraCharges;
                     }
-                    
+
                     const difference = paidAmount - requiredAmount;
                     const isValidPayment = paidAmount > 0 && paidAmount <= requiredAmount;
-                    
+
                     return (
                       <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
                         <h4 className="font-medium text-gray-800 mb-2">Payment Summary</h4>
@@ -3182,7 +3133,7 @@ Generated by Billing System`;
                       </div>
                     );
                   })()}
-                  
+
                   {/* Confirmation Buttons with Validation */}
                   <div className="flex gap-4">
                     {(() => {
@@ -3192,10 +3143,10 @@ Generated by Billing System`;
                       } else {
                         paidAmount = parseFloat(paymentAmount) || 0;
                       }
-                      
+
                       const itemsTotal = billItems.filter(item => item.item && item.weight && item.rate).reduce((sum, item) => sum + item.amount, 0);
                       const validItems = billItems.filter(item => item.item && item.weight && item.rate);
-                      
+
                       let requiredAmount;
                       if (validItems.length === 0 && previousBalance > 0) {
                         const extraCharges = (parseFloat(cleaningCharge) || 0) + (parseFloat(deliveryCharge) || 0);
@@ -3204,20 +3155,19 @@ Generated by Billing System`;
                         const extraCharges = (parseFloat(cleaningCharge) || 0) + (parseFloat(deliveryCharge) || 0);
                         requiredAmount = previousBalance + itemsTotal + extraCharges;
                       }
-                      
+
                       const isValidPayment = paidAmount > 0;
                       const hasExcessPayment = false; // Allow all payments including overpayments
-                      
+
                       return (
                         <>
                           <button
                             onClick={handleConfirmBill}
                             disabled={!isValidPayment}
-                            className={`flex-1 px-4 py-2 rounded-lg font-medium ${
-                              !isValidPayment 
-                                ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
-                                : 'bg-green-600 text-white hover:bg-green-700'
-                            }`}
+                            className={`flex-1 px-4 py-2 rounded-lg font-medium ${!isValidPayment
+                              ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                              : 'bg-green-600 text-white hover:bg-green-700'
+                              }`}
                             title={!isValidPayment ? 'Please enter a payment amount' : 'Confirm payment'}
                           >
                             {!isValidPayment ? 'Enter Payment Amount' : 'Yes - Confirm'}
@@ -3252,7 +3202,7 @@ Generated by Billing System`;
                     </p>
                   </div>
                 </div>
-                
+
                 {/* Bill Summary */}
                 <div className="bg-white rounded-lg p-4 mb-4 border border-green-100">
                   <div className="grid grid-cols-2 gap-4 text-sm">
@@ -3274,7 +3224,7 @@ Generated by Billing System`;
                     </div>
                   </div>
                 </div>
-                
+
                 {/* Action Buttons - Clean, professional layout */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                   <button
@@ -3310,7 +3260,7 @@ Generated by Billing System`;
                     🖨️ Print Bill
                   </button>
                 </div>
-                
+
                 <div className="text-center">
                   <button
                     onClick={handleNextCustomer}
@@ -3333,7 +3283,7 @@ Generated by Billing System`;
               <h2 className="text-lg sm:text-2xl font-bold mb-3">Load Management</h2>
               <p className="text-sm text-gray-600">Manage your inventory and load entries</p>
             </div>
-            
+
             {/* Debug Info */}
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded">
               <h4 className="font-semibold text-blue-800">Debug Info</h4>
@@ -3341,7 +3291,7 @@ Generated by Billing System`;
               <p className="text-sm text-blue-700">Products Count: {products.length}</p>
               <p className="text-sm text-blue-700">Suppliers Count: {suppliers.length}</p>
             </div>
-            
+
             <ErrorBoundary fallback={
               <div className="text-center py-8">
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
@@ -3363,7 +3313,7 @@ Generated by Billing System`;
 
         {/* Edit Bill View */}
         {currentView === 'editBill' && (
-          <EditBillPage 
+          <EditBillPage
             bills={bills}
             customers={customers}
             products={products}
@@ -3376,7 +3326,7 @@ Generated by Billing System`;
         {currentView === 'products' && (
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4">
             <h2 className="text-lg sm:text-2xl font-bold mb-3">Manage Products</h2>
-            
+
             {/* Debug Info */}
             <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded">
               <h4 className="font-semibold text-green-800">Debug Info</h4>
@@ -3385,7 +3335,7 @@ Generated by Billing System`;
               <p className="text-sm text-green-700">Suppliers Count: {suppliers.length}</p>
               <p className="text-sm text-green-700">Loading: {loading ? 'Yes' : 'No'}</p>
             </div>
-            
+
             {/* Business Information Display */}
             <ErrorBoundary fallback={
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded mb-4">
@@ -3399,7 +3349,7 @@ Generated by Billing System`;
                 businessId={businessId}
               />
             </ErrorBoundary>
-            
+
             <ErrorBoundary fallback={
               <div className="text-center py-8">
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
@@ -3423,17 +3373,17 @@ Generated by Billing System`;
         {currentView === 'customers' && userType === 'owner' && (
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4">
             <h2 className="text-lg sm:text-2xl font-bold mb-3">Manage Customers & Suppliers</h2>
-            
+
             {/* Business Information Display */}
             <BusinessInfoDisplay
               businessInfo={businessInfo}
               onUpdate={handleBusinessInfoUpdate}
               businessId={businessId}
             />
-            
+
             <div className="grid grid-cols-1 gap-8">
               {/* Customer Management */}
-              <CustomerManager 
+              <CustomerManager
                 customers={customers}
                 onAddCustomer={addCustomer}
                 onUpdateCustomer={updateCustomer}
@@ -3464,7 +3414,7 @@ Generated by Billing System`;
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
-                
+
                 <h4 className="font-medium mb-2">Current Suppliers ({suppliers.length})</h4>
                 <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3">
                   {suppliers.map((supplier, index) => (
@@ -3482,13 +3432,13 @@ Generated by Billing System`;
         {currentView === 'business-info' && userType === 'owner' && (
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4">
             <h2 className="text-lg sm:text-2xl font-bold mb-3">Business Information Management</h2>
-            
+
             <BusinessInfoDisplay
               businessInfo={businessInfo}
               onUpdate={handleBusinessInfoUpdate}
               businessId={businessId}
             />
-            
+
             <div className="mt-6 p-4 bg-gray-50 rounded-lg">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Information</h3>
               <p className="text-sm text-gray-600 mb-4">
@@ -3514,14 +3464,14 @@ Generated by Billing System`;
         {currentView === 'balance' && userType === 'owner' && (
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4">
             <h2 className="text-lg sm:text-2xl font-bold mb-3">Customer Balance & History</h2>
-            
+
             {/* Business Information Display */}
             <BusinessInfoDisplay
               businessInfo={businessInfo}
               onUpdate={handleBusinessInfoUpdate}
               businessId={businessId}
             />
-            
+
             {/* Customer Selection and Date Range */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
               <div>
@@ -3575,7 +3525,7 @@ Generated by Billing System`;
             {balanceCustomer && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6">
                 <h3 className="text-lg font-semibold">
-                  {balanceCustomer} - Current Balance: 
+                  {balanceCustomer} - Current Balance:
                   <span className="text-red-600 ml-2 text-2xl font-bold">
                     ₹{getCustomerBalance(balanceCustomer).toFixed(2)}
                   </span>
@@ -3655,10 +3605,10 @@ Generated by Billing System`;
                           <td className="border border-gray-300 p-2 text-right text-lg font-bold text-green-600">₹{bill.paidAmount.toFixed(2)}</td>
                           <td className="border border-gray-300 p-2 text-right text-lg font-bold">₹{bill.balanceAmount.toFixed(2)}</td>
                           <td className="border border-gray-300 p-2">
-                            {bill.paymentMethod === 'cash' ? 'Cash' : 
-                             bill.paymentMethod === 'upi' ? `UPI - ${bill.upiType}` :
-                             bill.paymentMethod === 'cash_gpay' ? `Cash + GPay` :
-                             `Check/DD - ${bill.bankName}`}
+                            {bill.paymentMethod === 'cash' ? 'Cash' :
+                              bill.paymentMethod === 'upi' ? `UPI - ${bill.upiType}` :
+                                bill.paymentMethod === 'cash_gpay' ? `Cash + GPay` :
+                                  `Check/DD - ${bill.bankName}`}
                           </td>
                         </tr>
                       ))}
@@ -3673,7 +3623,7 @@ Generated by Billing System`;
         {/* Sales Dashboard View */}
         {currentView === 'dashboard' && userType === 'owner' && (
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4">
-            <SalesDashboard 
+            <SalesDashboard
               bills={bills}
               customers={customers}
               businessId={businessId}
@@ -3698,7 +3648,7 @@ Generated by Billing System`;
             </ErrorBoundary>
           </div>
         )}
-        
+
         {/* Shop Registration Modal */}
         {showShopRegistration && (
           <ShopRegistration

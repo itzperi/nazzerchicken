@@ -24,6 +24,8 @@ interface WalkInBillingProps {
     address: string;
     gstNumber: string;
   };
+  onPrint?: (bill: any) => Promise<void>;
+  businessId?: string;
 }
 
 const WalkInBilling: React.FC<WalkInBillingProps> = ({
@@ -36,7 +38,9 @@ const WalkInBilling: React.FC<WalkInBillingProps> = ({
   totalAmount,
   onSendWhatsApp,
   onWalkInCustomerCreation,
-  shopDetails
+  shopDetails,
+  onPrint,
+  businessId
 }) => {
   const [phoneNumber, setPhoneNumber] = useState(selectedCustomerPhone);
   const [isValidPhone, setIsValidPhone] = useState(false);
@@ -49,7 +53,7 @@ const WalkInBilling: React.FC<WalkInBillingProps> = ({
   useEffect(() => {
     const cleanPhone = phoneNumber.replace(/\D/g, '');
     setIsValidPhone(cleanPhone.length === 10);
-    
+
     if (cleanPhone.length === 10) {
       onPhoneUpdate(phoneNumber);
       // Auto-create walk-in customer when valid phone is entered
@@ -86,9 +90,9 @@ ${shopDetails?.gstNumber ? `🧾 GST: ${shopDetails.gstNumber}` : ''}
 ⏰ Time: ${new Date().toLocaleTimeString('en-IN', { hour12: true })}
 
 🛒 ITEMS:
-${validItems.map(item => 
-  `• ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
-).join('\n')}
+${validItems.map(item =>
+      `• ${item.item} - ${item.weight}kg @ ₹${item.rate}/kg = ₹${item.amount.toFixed(2)}`
+    ).join('\n')}
 
 💰 BILL SUMMARY:
 ────────────────
@@ -110,7 +114,7 @@ Thank you for your business! 🙏
     const encodedMessage = encodeURIComponent(billContent);
     const cleanPhone = phoneNumber.replace(/\D/g, '');
     const whatsappUrl = `https://wa.me/91${cleanPhone}?text=${encodedMessage}`;
-    
+
     window.open(whatsappUrl, '_blank');
     setShowWhatsAppPreview(false);
   };
@@ -124,36 +128,58 @@ Thank you for your business! 🙏
     const billContent = generateBillContent();
     const cleanPhone = phoneNumber.replace(/\D/g, '');
     const smsUrl = `sms:${cleanPhone}?body=${encodeURIComponent(billContent)}`;
-    
+
     const link = document.createElement('a');
     link.href = smsUrl;
     link.click();
-    
+
     setShowWhatsAppPreview(false);
   };
 
-  const handlePrint = () => {
-    const billContent = generateBillContent();
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Walk-in Bill</title>
-            <style>
-              @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
-              body { font-family: 'Roboto', sans-serif; font-weight: 700; padding: 20px; line-height: 1.4; }
-              pre { white-space: pre-wrap; font-size: 16px; margin: 0; font-family: 'Roboto', sans-serif; font-weight: 700; }
-              @media print { body { margin: 0; padding: 10px; font-weight: 700; } pre { font-size: 14px; font-weight: 700; } }
-            </style>
-          </head>
-          <body>
-            <pre>${billContent}</pre>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.print();
+  const handlePrint = async () => {
+    if (onPrint) {
+      const validItems = billItems.filter(item => item.item && item.weight && item.rate);
+      const itemsTotal = validItems.reduce((sum, item) => sum + item.amount, 0);
+
+      // Create a temporary bill object for the centralized print logic
+      const tempBill = {
+        id: Date.now(),
+        customer: selectedCustomer || 'Walk-in Customer',
+        customerPhone: selectedCustomerPhone,
+        date: new Date().toISOString().split('T')[0],
+        items: validItems,
+        totalAmount: previousBalance + itemsTotal,
+        paidAmount: 0, // In preview mode, paid is 0
+        balanceAmount: previousBalance + itemsTotal,
+        paymentMethod: 'cash' as const,
+        timestamp: new Date()
+      };
+
+      await onPrint(tempBill);
+    } else {
+      // Fallback if prop not provided (keeping local for safety but marked as deprecated)
+      const billContent = generateBillContent();
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Walk-in Bill</title>
+              <style>
+                @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+                body { font-family: 'Roboto', sans-serif; font-weight: 700; padding: 20px; line-height: 1.4; }
+                pre { white-space: pre-wrap; font-size: 16px; margin: 0; font-family: 'Roboto', sans-serif; font-weight: 700; }
+                @media print { body { margin: 0; padding: 10px; font-weight: 700; } pre { font-size: 14px; font-weight: 700; } }
+              </style>
+            </head>
+            <body>
+              <pre>${billContent}</pre>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+      }
     }
   };
 
@@ -163,7 +189,7 @@ Thank you for your business! 🙏
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `WalkIn_Bill_${new Date().toISOString().slice(0,10)}.txt`;
+    a.download = `WalkIn_Bill_${new Date().toISOString().slice(0, 10)}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -187,9 +213,8 @@ Thank you for your business! 🙏
               type="tel"
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
-              className={`w-full p-3 pl-10 border rounded-lg focus:ring-2 focus:ring-green-500 transition-colors ${
-                phoneNumber && !isValidPhone ? 'border-red-500' : 'border-gray-300'
-              }`}
+              className={`w-full p-3 pl-10 border rounded-lg focus:ring-2 focus:ring-green-500 transition-colors ${phoneNumber && !isValidPhone ? 'border-red-500' : 'border-gray-300'
+                }`}
               placeholder="Enter 10-digit phone number"
               maxLength={10}
             />
@@ -269,7 +294,7 @@ Thank you for your business! 🙏
                 <X className="h-5 w-5" />
               </button>
             </div>
-            
+
             <div className="text-center mb-4">
               <p className="text-sm text-gray-600">
                 Send bill to {selectedCustomer || 'Walk-in Customer'} ({formatPhoneDisplay(phoneNumber)})
@@ -293,7 +318,7 @@ Thank you for your business! 🙏
                 <span>SMS</span>
               </button>
             </div>
-            
+
             <div className="bg-gray-50 rounded-lg p-3">
               <p className="text-xs text-gray-600 mb-2">Bill Preview:</p>
               <div className="bg-white border border-gray-200 rounded p-3 max-h-32 overflow-y-auto">
