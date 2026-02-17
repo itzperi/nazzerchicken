@@ -96,8 +96,7 @@ class PrinterService {
 
     // Process content to apply bold formatting to key fields
     const processedContent = content
-      // Bold shop name (first line usually)
-      .split('\\n')
+      .split('\n')
       .map((line, index) => {
         // Shop name (usually first line)
         if (index === 0 && line.trim().length > 0) {
@@ -115,13 +114,13 @@ class PrinterService {
         if (line.startsWith('Customer:')) {
           return line.replace(/(Customer:.+)/g, '<b>$1</b>');
         }
-        // Total amounts
-        if (line.includes('Total Bill Amount:') || line.includes('New Balance:') || line.includes('Payment Amount:')) {
+        // Total amounts and balance
+        if (line.includes('Total Bill Amount:') || line.includes('Total Amount:') || line.includes('New Balance:') || line.includes('Balance Amount:') || line.includes('Payment Amount:')) {
           return `<b>${line}</b>`;
         }
         return line;
       })
-      .join('\\n');
+      .join('\n');
 
     // Create QR code section if provided
     const qrCodeSection = qrCodeDataUrl ? `
