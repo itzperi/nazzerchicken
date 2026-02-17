@@ -85,14 +85,51 @@ class PrinterService {
   }
 
   /**
-   * Standard system print fallback
+   * Standard system print fallback with bold formatting and QR code support
    */
-  async printViaSystem(content: string, title: string = 'Bill'): Promise<void> {
+  async printViaSystem(content: string, title: string = 'Bill', qrCodeDataUrl?: string): Promise<void> {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       alert('Please disable popup blocker to print.');
       return;
     }
+
+    // Process content to apply bold formatting to key fields
+    const processedContent = content
+      // Bold shop name (first line usually)
+      .split('\\n')
+      .map((line, index) => {
+        // Shop name (usually first line)
+        if (index === 0 && line.trim().length > 0) {
+          return `<b>${line}</b>`;
+        }
+        // GST number
+        if (line.includes('GST:')) {
+          return line.replace(/(GST:.+)/g, '<b>$1</b>');
+        }
+        // Bill number
+        if (line.includes('Bill No:')) {
+          return line.replace(/(Bill No:.+)/g, '<b>$1</b>');
+        }
+        // Customer name
+        if (line.startsWith('Customer:')) {
+          return line.replace(/(Customer:.+)/g, '<b>$1</b>');
+        }
+        // Total amounts
+        if (line.includes('Total Bill Amount:') || line.includes('New Balance:') || line.includes('Payment Amount:')) {
+          return `<b>${line}</b>`;
+        }
+        return line;
+      })
+      .join('\\n');
+
+    // Create QR code section if provided
+    const qrCodeSection = qrCodeDataUrl ? `
+      <div style="text-align: center; margin-top: 20px;">
+        <img src="${qrCodeDataUrl}" alt="QR Code" style="width: 150px; height: 150px;" />
+        <p style="margin-top: 5px; font-size: 12px;">Scan to Pay</p>
+      </div>
+    ` : '';
 
     printWindow.document.write(`
       <html>
@@ -102,7 +139,7 @@ class PrinterService {
             @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
             body { 
               font-family: 'Roboto', sans-serif; 
-              font-weight: 700;
+              font-weight: 400;
               padding: 20px; 
               line-height: 1.4;
               margin: 0;
@@ -112,16 +149,21 @@ class PrinterService {
               font-size: 14px;
               margin: 0;
               font-family: 'Roboto', sans-serif;
+              font-weight: 400;
+            }
+            b {
               font-weight: 700;
             }
             @media print {
               body { padding: 10px; }
               pre { font-size: 12px; }
+              b { font-weight: 700; }
             }
           </style>
         </head>
         <body>
-          <pre>${content}</pre>
+          <pre>${processedContent}</pre>
+          ${qrCodeSection}
           <script>
             window.onload = function() {
               setTimeout(function() {

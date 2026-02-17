@@ -77,6 +77,13 @@ const Index = () => {
   // Walk-in customer state
   const [isWalkInMode, setIsWalkInMode] = useState(false);
 
+  // Customer requirement toggle - when true, customer details are required
+  const [requireCustomerDetails, setRequireCustomerDetails] = useState(true);
+
+  // QR code state
+  const [uploadedQRCode, setUploadedQRCode] = useState<string | null>(null);
+  const [includeQRInPrint, setIncludeQRInPrint] = useState(false);
+
   // Supabase data hook
   const {
     products,
@@ -463,7 +470,7 @@ Thank you for your business! 🙏
       // Try database function first
       try {
         console.log(`[WALK-IN] Attempting database function for phone: ${cleanPhone}`);
-        const { data: customerId, error: rpcError } = await supabase.rpc('create_or_get_walkin_customer', {
+        const { data: customerId, error: rpcError } = await supabase.rpc('create_or_get_walkin_customer' as any, {
           p_phone: cleanPhone,
           p_business_id: businessId
         });
@@ -584,6 +591,33 @@ Thank you for your business! 🙏
     } catch (error) {
       console.error(`[BILLING PAGE] Error refreshing balance for ${selectedCustomer}:`, error);
       alert('Error refreshing balance. Please try again.');
+    }
+  };
+
+  // Keyboard navigation handler for billing table
+  const handleKeyPress = (e: React.KeyboardEvent, rowIndex: number, fieldName: 'item' | 'weight' | 'rate') => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+
+      // Navigate to next field in sequence: item -> weight -> rate -> next item
+      let nextFieldName: string;
+      let nextRowIndex = rowIndex;
+
+      if (fieldName === 'item') {
+        nextFieldName = `weight-${rowIndex}`;
+      } else if (fieldName === 'weight') {
+        nextFieldName = `rate-${rowIndex}`;
+      } else { // rate
+        // Move to next row's item field
+        nextRowIndex = rowIndex + 1;
+        nextFieldName = `item-${nextRowIndex}`;
+      }
+
+      // Focus the next field
+      const nextElement = document.getElementById(nextFieldName);
+      if (nextElement) {
+        nextElement.focus();
+      }
     }
   };
 
@@ -1030,7 +1064,7 @@ Thank you for your business! 🙏
     }
   }, [billItems, previousBalance, cleaningCharge, deliveryCharge, paymentAmount, paymentMethod, cashAmount, gpayAmount]);
 
-  // Generate bill content using running balance system - ENHANCED for Vasan business
+  // Generate bill content using running balance system - ENHANCED for Vasan business with BOLD formatting and QR code support
   const generateBillContent = async (bill: Bill, uiPreviousBalance: number) => {
     const time = new Date(bill.timestamp).toLocaleTimeString();
 
@@ -1091,7 +1125,7 @@ ${shopDetails?.gstNumber ? `GST: ${shopDetails.gstNumber}` : ''}
     } else {
       // Get dynamic contact info based on business ID
       let contactInfo = '';
-      if (businessId === 'vasan_chicken_perambur' || businessId === 'vasan') {
+      if (businessId === 'vasan_chicken_perambur') {
         contactInfo = `Phone: +91 99623 43299
 WhatsApp: +91 99623 43299
 Email: vasanchicken@gmail.com`;
@@ -1114,8 +1148,10 @@ ${contactInfo}
 `;
     }
 
-    // Generate the bill content with items
-    return `${businessHeader}Bill No: ${bill.billNumber || 'N/A'}
+    // Generate the bill content with items and BOLD key fields
+    // Note: Using plain text markers for bold since this is for thermal printers
+    // For web/PDF printing, we'll handle bold differently in the print function
+    const billText = `${businessHeader}Bill No: ${bill.billNumber || 'N/A'}
 Date: ${bill.date}
 Time: ${time}
 Customer: ${bill.customer}
@@ -1138,7 +1174,9 @@ Payment Amount: ₹${bill.paidAmount.toFixed(2)}
 New Balance: ₹${newBalance.toFixed(2)}${(bill as any).advanceAmount > 0 ? `\nAdvance Payment: ₹${(bill as any).advanceAmount.toFixed(2)}` : ''}${paymentMethodText}
 ================================
 
-Thank you for your business!`.trim();
+Thank you for your business!`;
+
+    return billText;
   };
 
   // Print current billing form (frontend view) - UPDATED with running balance system
@@ -1260,6 +1298,9 @@ Use "Confirm Bill" to save this bill.
     try {
       const printContent = await generateBillContent(bill, previousBalance);
 
+      // Get QR code if enabled
+      const qrCode = includeQRInPrint ? uploadedQRCode : undefined;
+
       // Check if we have a connected Bluetooth printer
       const isBluetoothConnected = printerService.isConnected();
 
@@ -1267,8 +1308,8 @@ Use "Confirm Bill" to save this bill.
         toast.info("Printing to Bluetooth printer...");
         await printerService.printRaw(printContent);
       } else {
-        // Fallback to robust system printing with mobile delays
-        await printerService.printViaSystem(printContent, `Bill - ${bill.customer}`);
+        // Fallback to robust system printing with mobile delays and QR code support
+        await printerService.printViaSystem(printContent, `Bill - ${bill.customer}`, qrCode);
       }
 
       setTimeout(() => {
@@ -1731,8 +1772,9 @@ Thank you for your business!
     customerHistory.forEach((bill, index) => {
       // Check if we need a new page
       if (yPosition > pageHeight - 40) {
+        const currentPage = doc.getCurrentPageInfo().pageNumber;
         doc.addPage();
-        addHeader(doc.internal.getNumberOfPages());
+        addHeader(currentPage + 1);
         yPosition = 45;
 
         // Re-add table headers
@@ -1813,7 +1855,7 @@ Thank you for your business!
     });
 
     // Add footers to all pages
-    const totalPages = doc.internal.getNumberOfPages();
+    const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       addFooter(i, totalPages);
     }
@@ -2104,8 +2146,9 @@ Generated by Billing System`;
       customerBills.forEach((bill, index) => {
         // Check for new page
         if (yPosition > pageHeight - 40) {
+          const currentPage = doc.getCurrentPageInfo().pageNumber;
           doc.addPage();
-          addHeader(doc.internal.getNumberOfPages());
+          addHeader(currentPage + 1);
           yPosition = 45;
           // Re-add table headers
           doc.setFontSize(10);
@@ -2156,7 +2199,7 @@ Generated by Billing System`;
     }
 
     // Add footers to all pages
-    const totalPages = doc.internal.getNumberOfPages();
+    const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       addFooter(i, totalPages);
     }
@@ -2309,8 +2352,9 @@ Generated by Billing System`;
     customers.forEach((customer, index) => {
       // Check if we need a new page
       if (yPosition > pageHeight - 40) {
+        const currentPage = doc.getCurrentPageInfo().pageNumber;
         doc.addPage();
-        addHeader(doc.internal.getNumberOfPages());
+        addHeader(currentPage + 1);
         yPosition = 45;
         // Re-add table headers
         doc.setFontSize(10);
@@ -2350,7 +2394,7 @@ Generated by Billing System`;
     });
 
     // Add footers to all pages
-    const totalPages = doc.internal.getNumberOfPages();
+    const totalPages = doc.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
       addFooter(i, totalPages);
     }
@@ -2598,8 +2642,25 @@ Generated by Billing System`;
                 </div>
               )}
 
-              {/* Customer Selection - Only show when not in walk-in mode */}
-              {!isWalkInMode && (
+              {/* Walk-in Customer Toggle */}
+              <div className="lg:col-span-2 mb-3 flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <input
+                  type="checkbox"
+                  id="require-customer"
+                  checked={requireCustomerDetails}
+                  onChange={(e) => setRequireCustomerDetails(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="require-customer" className="text-sm font-medium text-gray-700 flex-grow">
+                  Require customer details
+                </label>
+                <span className="text-xs text-gray-500">
+                  Disable for walk-in customers
+                </span>
+              </div>
+
+              {/* Customer Selection - Only show when customer details are required */}
+              {requireCustomerDetails && (
                 <>
                   <div className="lg:col-span-2 relative">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2762,8 +2823,10 @@ Generated by Billing System`;
                       </td>
                       <td className="border border-gray-300 p-1">
                         <select
+                          id={`item-${index}`}
                           value={item.item}
                           onChange={(e) => handleItemChange(index, 'item', e.target.value)}
+                          onKeyDown={(e) => handleKeyPress(e, index, 'item')}
                           className="w-full p-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-sm"
                         >
                           <option value="">Select Item</option>
@@ -2774,20 +2837,24 @@ Generated by Billing System`;
                       </td>
                       <td className="border border-gray-300 p-1">
                         <input
+                          id={`weight-${index}`}
                           type="number"
                           step="0.1"
                           value={item.weight}
                           onChange={(e) => handleItemChange(index, 'weight', e.target.value)}
+                          onKeyDown={(e) => handleKeyPress(e, index, 'weight')}
                           className="w-full p-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-sm"
                           placeholder="0.0"
                         />
                       </td>
                       <td className="border border-gray-300 p-1">
                         <input
+                          id={`rate-${index}`}
                           type="number"
                           step="0.01"
                           value={item.rate}
                           onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
+                          onKeyDown={(e) => handleKeyPress(e, index, 'rate')}
                           className="w-full p-1.5 border border-gray-200 rounded focus:ring-2 focus:ring-blue-500 text-sm"
                           placeholder="0.00"
                         />
@@ -3133,6 +3200,57 @@ Generated by Billing System`;
                       </div>
                     );
                   })()}
+
+                  {/* QR Code Upload Section */}
+                  <div className="lg:col-span-3 border-t pt-3 mt-3">
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Payment QR Code
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id="include-qr"
+                            checked={includeQRInPrint}
+                            onChange={(e) => setIncludeQRInPrint(e.target.checked)}
+                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <label htmlFor="include-qr" className="text-sm text-gray-600">
+                            Include in print
+                          </label>
+                        </div>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setUploadedQRCode(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="w-full p-2 text-sm text-gray-700 border border-gray-300 rounded-lg cursor-pointer bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      {uploadedQRCode && (
+                        <div className="mt-2 flex items-center gap-3 p-2 bg-white rounded border border-gray-200">
+                          <img src={uploadedQRCode} alt="QR Code" className="w-16 h-16 rounded" />
+                          <span className="text-sm text-gray-600 flex-grow">QR Code uploaded</span>
+                          <button
+                            type="button"
+                            onClick={() => setUploadedQRCode(null)}
+                            className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
                   {/* Confirmation Buttons with Validation */}
                   <div className="flex gap-4">
